@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Streamlit and local environment
+.streamlit/secrets.toml
+.env
+.env.*
+
+# Licensed/private LCA inputs and exports
+data/factors_internal.csv
+data/factors_internal_*.csv
+data/ecoinvent/
+data/openlca/
+*.zolca
+*.spold
+
+# Local analysis workbooks and archives
+NC_Fraser_Fir_Fertilizer_SA_Calculations.xlsx
+files.zip
