@@ -85,7 +85,7 @@ def scale_inventory_amounts(inventory_df: pd.DataFrame, farm_config: dict[str, A
 
 
 def traci_columns_in(df: pd.DataFrame) -> list[str]:
-    skip = {"Material", "Unit", "Year", "Amount", "Unit Cost ($)", "Type", "Notes"}
+    skip = {"Material", "Unit", "Year", "Amount", "Unit Cost ($)", "Type", "Stage", "Basis", "Notes"}
     cols = []
     for c in df.columns:
         if c in skip:
@@ -138,6 +138,66 @@ def build_optimizer_arrays(
         df[GWP_COL] = 0.0
         impact_cols = [GWP_COL]
     impact_matrix = df[impact_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy(dtype=float)
+
+    # Add foreground field emissions only to production-only factors. Rows
+    # marked combustion already include use-phase emissions and must not receive
+    # another direct layer.
+    from .fertilizer import (
+        FertiliserProduct,
+        characterised_direct,
+        direct_emissions,
+        emissions_for_plan,
+    )
+
+    mass_to_kg = {
+        "kg": 1.0,
+        "lb": 0.45359237,
+        "lbs": 0.45359237,
+        "oz": 0.028349523125,
+        "short ton": 907.18474,
+        "ton": 907.18474,
+    }
+    stages = df["Stage"].astype(str).str.strip().str.lower()
+    for row_i, row in df.iterrows():
+        if stages.iloc[row_i] != "production":
+            continue
+        name = str(row["Material"]).lower()
+        unit_kg = mass_to_kg.get(str(row.get("Unit", "")).strip().lower())
+        characterised = None
+        if unit_kg is not None and any(
+            key in name for key in ("fertilizer", "fertiliser", "npk", "urea", "litter", "manure")
+        ):
+            if "urea" in name:
+                n_fraction, form, organic = 0.46, "urea", False
+            elif "ammonium sulphate" in name or "ammonium sulfate" in name:
+                n_fraction, form, organic = 0.21, "ammonium", False
+            elif "calcium nitrate" in name:
+                n_fraction, form, organic = 0.155, "nitrate", False
+            elif "litter" in name or "manure" in name:
+                n_fraction, form, organic = 0.0289, "aggregate", True
+            else:
+                n_fraction, form, organic = 0.19, "ammonium_nitrate", False
+            product = FertiliserProduct(
+                name=str(row["Material"]),
+                n_fraction=n_fraction,
+                form=form,
+                is_organic=organic,
+                pan_fraction=0.50 if organic else 1.0,
+            )
+            characterised = characterised_direct(
+                emissions_for_plan([(product, unit_kg)])
+            )
+        elif unit_kg is not None and any(
+            key in name for key in ("lime", "limestone", "dolomit", "caco3")
+        ):
+            characterised = characterised_direct(
+                direct_emissions(synthetic_n=0.0, lime_kg=unit_kg)
+            )
+
+        if characterised:
+            for category, value in characterised.items():
+                if category in impact_cols:
+                    impact_matrix[row_i, impact_cols.index(category)] += float(value)
 
     types = df["Type"].astype(str).str.strip().str.title()
     scale_mask = (types == "Scale").to_numpy(dtype=bool, copy=True)
@@ -213,7 +273,14 @@ def load_deap_excel(uploaded_file: UploadedFile) -> dict[str, Any]:
     editor = inventory_table_for_editor()
     for col in editor.columns:
         if col not in merged.columns:
-            merged[col] = "" if col in ("Type", "Notes", "Material", "Unit") else 0.0
+            if col == "Stage":
+                merged[col] = merged["Material"].map(default_stage_for)
+            elif col == "Basis":
+                merged[col] = merged["Material"].map(default_basis_for)
+            elif col in ("Type", "Notes", "Material", "Unit"):
+                merged[col] = ""
+            else:
+                merged[col] = 0.0
     keep = list(EDITOR_COLUMNS)
     for c in impact_columns:
         if c not in keep:
