@@ -53,7 +53,7 @@ def default_substitutions() -> list[Substitution]:
                         ("roundup", 0.35),
                         ("crossbow", 0.35),
                         ("diesel", 1.85),
-                        ("tractor", 1.30),
+                        ("tractor use", 1.30),
                     ),
                     placeholder=True,
                     note="Replace ratios with field trial or grower records.",

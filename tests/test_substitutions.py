@@ -93,3 +93,10 @@ def test_unsourced_options_are_visible():
     flagged = unsourced_options(default_substitutions())
     assert flagged
     assert any("Grafted" in item for item in flagged)
+
+
+def test_choice_count_must_match_substitutions(inventory):
+    amounts, costs, materials, mask = inventory
+    sub = default_substitutions()[0]
+    with pytest.raises(ValueError):
+        apply_substitutions(amounts, costs, materials, 1900, mask, [], [sub])
