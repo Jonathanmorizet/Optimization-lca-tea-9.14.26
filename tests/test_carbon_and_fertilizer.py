@@ -238,6 +238,15 @@ def test_stage_flags_separate_production_from_combustion(arrays):
     assert fert and all(v == "production" for v in fert)
     assert diesel and all(v == "combustion" for v in diesel)
 
+    # Production-only fertilizer receives the direct N-emission layer; the
+    # combustion-inclusive diesel factor is left unchanged.
+    gwp_i = arrays["traci_impact_cols"].index(GWP_COL)
+    factors = arrays["impact_matrix"][:, gwp_i]
+    by_factor = dict(zip(arrays["materials"], factors))
+    assert by_factor["Fertilizer (19-19-19)"] > 0.76
+    diesel_factors = [v for k, v in by_factor.items() if "diesel" in k.lower()]
+    assert diesel_factors and all(v == pytest.approx(0.095) for v in diesel_factors)
+
 
 def test_no_material_is_both_stages(arrays):
     assert set(arrays["stages"]) <= {"production", "combustion", "none"}
