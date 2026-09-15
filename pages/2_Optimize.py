@@ -49,6 +49,13 @@ from lib.results import (
 
 st.set_page_config(page_title="Optimize", page_icon="📈", layout="wide")
 st.title("Optimize the farm plan")
+st.sidebar.caption("Model revision: weed-control-only · 2026-09-15")
+
+# Keep the grower-facing optimizer limited to decisions supported by the
+# deployed model.  This page-level allowlist is intentional defense in depth:
+# even if an unsupported scenario is accidentally restored to
+# default_substitutions(), it must not reappear as a selectable decision.
+ALLOWED_PRACTICE_KEYS = frozenset({"weed_control"})
 
 if not st.session_state.get("opt_ready"):
     st.warning("Save a farm inventory first.")
@@ -154,7 +161,10 @@ if goal in ("practices", "tradeoff"):
 
 if goal == "practices":
     st.markdown("#### Practices the optimizer may choose between")
-    all_subs = default_substitutions()
+    all_subs = [
+        sub for sub in default_substitutions()
+        if sub.key in ALLOWED_PRACTICE_KEYS
+    ]
     picked = st.multiselect(
         "Include these decisions",
         options=[sub.key for sub in all_subs],
