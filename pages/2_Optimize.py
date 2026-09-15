@@ -107,16 +107,20 @@ if goal in ("practices", "tradeoff"):
         ),
     )
     if use_carbon:
-        cc1, cc2, cc3 = st.columns(3)
-        ag = cc1.number_input("Above-ground CO2 per tree (kg)", 0.0, 100.0, 14.1, 0.1)
-        bg = cc2.number_input("Below-ground CO2 per tree (kg)", 0.0, 100.0, 4.2, 0.1)
-        alloc = cc3.number_input(
-            "Share of cultivation burden to trees", 0.5, 1.0, 0.893, 0.001,
-            help="Remainder goes to the recovered-greenery wreath by-product. "
-                 "No biogenic CO2 is allocated to the wreath.",
-        )
-        carbon = CarbonParams(
-            above_ground_co2=ag, below_ground_co2=bg, tree_allocation=alloc
+        # Fixed from the manuscript, not a user input. 14.1 kg above-ground and
+        # 4.2 kg below-ground per 7-ft tree are measured values for the
+        # functional unit, and 0.893 is the wet-mass allocation between tree and
+        # wreath. Letting a grower type over these would let them manufacture
+        # any net-GWP result they liked.
+        carbon = CarbonParams()
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Above-ground CO2", f"{carbon.above_ground_co2:.1f} kg/tree")
+        m2.metric("Below-ground CO2", f"{carbon.below_ground_co2:.1f} kg/tree")
+        m3.metric("Burden share to trees", f"{carbon.tree_allocation:.3f}")
+        st.caption(
+            "Fixed from the published LCA for the 7-ft functional unit "
+            "(Sections 2.2.1 and 3.2). Not editable: these are measured values, "
+            "not preferences."
         )
         stock = sequestration(base["trees"], carbon)
         kept = retained_at_100_years(base["trees"], carbon)
@@ -281,6 +285,60 @@ def _change_table(amounts):
         scale_mask,
         efficiency_mask,
     )
+
+
+
+def _emission_split_chart(amounts, title="Upstream vs direct emissions"):
+    """Stacked split of each impact category into upstream and direct shares.
+
+    Upstream is the ecoinvent cradle-to-gate factor; direct is the IPCC field
+    layer added in build_optimizer_arrays. Rows flagged "combustion" contribute
+    only upstream, because their activity already includes emission to air --
+    adding a direct layer there would double count.
+    """
+    amounts = np.asarray(amounts, dtype=float)
+    total_m = np.asarray(arrays["impact_matrix"], dtype=float)
+    direct_m = np.asarray(arrays.get("direct_matrix", np.zeros_like(total_m)), dtype=float)
+    cols = list(arrays["traci_impact_cols"])
+
+    rows = []
+    for j, col in enumerate(cols):
+        total = float(amounts @ total_m[:, j])
+        direct = float(amounts @ direct_m[:, j])
+        if total == 0 and direct == 0:
+            continue
+        rows.append({
+            "Category": col,
+            "Upstream": total - direct,
+            "Direct (field)": direct,
+            "Total": total,
+            "Direct share": (direct / total) if total else 0.0,
+        })
+    if not rows:
+        return None
+    df = pd.DataFrame(rows)
+
+    st.markdown(f"### {title}")
+    norm = st.checkbox(
+        "Show as share of each category", value=True, key=f"norm_{title}",
+        help="Categories span many orders of magnitude, so absolute values are "
+             "hard to compare on one axis.",
+    )
+    plot = df.set_index("Category")[["Upstream", "Direct (field)"]]
+    if norm:
+        denom = plot.sum(axis=1).replace(0, np.nan)
+        plot = plot.div(denom, axis=0).fillna(0.0)
+    st.bar_chart(plot, stack=True, height=340)
+
+    shown = df[["Category", "Upstream", "Direct (field)", "Total", "Direct share"]].copy()
+    shown["Direct share"] = shown["Direct share"].map(lambda v: f"{v:.0%}")
+    st.dataframe(shown, use_container_width=True, hide_index=True)
+    st.caption(
+        "Direct emissions are field N2O, ammonia and nitrate from fertilizer, "
+        "plus CO2 from liming. Diesel shows no direct share by design: its "
+        "ecoinvent activity already includes combustion."
+    )
+    return df
 
 
 def _show_card_and_hotspots(amounts, title="Selected plan"):
@@ -471,6 +529,7 @@ if run["kind"] == "practices":
     st.markdown("### Material changes (before substitution effects)")
     st.dataframe(change, use_container_width=True)
     cost_h, gwp_h = _show_card_and_hotspots(amounts)
+    _emission_split_chart(amounts)
     hist_df = change
     pareto_out = df_p
     metrics = {
@@ -530,6 +589,7 @@ if run["kind"] in ("pareto", "budget"):
     st.markdown("### Material changes")
     st.dataframe(change, use_container_width=True)
     cost_h, gwp_h = _show_card_and_hotspots(amounts)
+    _emission_split_chart(amounts)
     hist_df = change
     pareto_out = df_p
 else:
@@ -554,6 +614,7 @@ else:
     st.markdown("### Material changes")
     st.dataframe(change, use_container_width=True)
     cost_h, gwp_h = _show_card_and_hotspots(amounts)
+    _emission_split_chart(amounts)
     hist_df = change
     pareto_out = None
 

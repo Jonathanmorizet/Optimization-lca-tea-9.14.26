@@ -39,7 +39,27 @@ class Substitution:
 
 
 def default_substitutions() -> list[Substitution]:
-    """Return the documented management choices."""
+    """Management choices a grower can actually make this season.
+
+    Deliberately excluded
+    ---------------------
+    Grafted PRR-resistant rootstock and genetically improved planting stock.
+    Both were removed rather than demoted, for different reasons:
+
+      * Improved genetics is hypothetical. Commercial-scale seed is only
+        "anticipated in the coming years", so no market price exists and a
+        grower cannot act on the recommendation.
+
+      * Grafted rootstock is real but site-conditional. The 88.5% -> 97.5%
+        survival gain represents elimination of Phytophthora-attributable
+        mortality, so on clean ground it costs money and buys nothing. The
+        model cannot observe site pressure, so offering it as an option means
+        recommending grafting where it does nothing.
+
+    Both belong in the manuscript's sensitivity analysis, not in a tool that
+    tells someone what to do this season. test_no_hypothetical_practices below
+    fails if either is re-added.
+    """
     return [
         Substitution(
             key="weed_control",
@@ -57,41 +77,6 @@ def default_substitutions() -> list[Substitution]:
                     ),
                     placeholder=True,
                     note="Replace ratios with field trial or grower records.",
-                ),
-            ),
-        ),
-        Substitution(
-            key="rootstock",
-            label="Rootstock",
-            help="Compare standard transplants with a grafted-rootstock scenario.",
-            options=(
-                PracticeOption("Standard transplants"),
-                PracticeOption(
-                    "Grafted rootstock",
-                    cost_additions=(("transplant", 2.50),),
-                    tree_multiplier=1.0565,
-                    placeholder=True,
-                    note="$2.50/transplant premium is a placeholder quote.",
-                ),
-            ),
-        ),
-        Substitution(
-            key="genetic_improvement",
-            label="Genetic improvement",
-            help="Illustrative higher-survival, shorter-rotation management case.",
-            options=(
-                PracticeOption("Current genetics"),
-                PracticeOption(
-                    "Improved genetics",
-                    amount_multipliers=(
-                        ("fertilizer", 0.875),
-                        ("diesel", 0.875),
-                        ("roundup", 0.875),
-                        ("crossbow", 0.875),
-                    ),
-                    tree_multiplier=1.0565,
-                    placeholder=True,
-                    note="Represents a seven-year rather than eight-year rotation.",
                 ),
             ),
         ),
