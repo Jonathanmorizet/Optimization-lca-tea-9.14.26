@@ -137,7 +137,15 @@ def build_optimizer_arrays(
     if not impact_cols:
         df[GWP_COL] = 0.0
         impact_cols = [GWP_COL]
-    impact_matrix = df[impact_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    impact_matrix = (
+        df[impact_cols]
+        .apply(pd.to_numeric, errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=float)
+    )
+    # pandas may hand back a read-only view; direct emissions are added in place
+    # below, so force a writable copy.
+    impact_matrix = np.array(impact_matrix, dtype=float, copy=True)
 
     # Add foreground field emissions only to production-only factors. Rows
     # marked combustion already include use-phase emissions and must not receive
@@ -158,6 +166,7 @@ def build_optimizer_arrays(
         "ton": 907.18474,
     }
     stages = df["Stage"].astype(str).str.strip().str.lower()
+    direct_matrix = np.zeros_like(impact_matrix)
     for row_i, row in df.iterrows():
         if stages.iloc[row_i] != "production":
             continue
@@ -197,7 +206,9 @@ def build_optimizer_arrays(
         if characterised:
             for category, value in characterised.items():
                 if category in impact_cols:
-                    impact_matrix[row_i, impact_cols.index(category)] += float(value)
+                    j = impact_cols.index(category)
+                    impact_matrix[row_i, j] += float(value)
+                    direct_matrix[row_i, j] += float(value)
 
     types = df["Type"].astype(str).str.strip().str.title()
     scale_mask = (types == "Scale").to_numpy(dtype=bool, copy=True)
@@ -211,6 +222,7 @@ def build_optimizer_arrays(
         "costs": costs,
         "impact_matrix": impact_matrix,
         "traci_impact_cols": impact_cols,
+        "direct_matrix": direct_matrix,
         "scale_mask": scale_mask,
         "efficiency_mask": efficiency_mask,
         "stages": df["Stage"].astype(str).tolist(),
